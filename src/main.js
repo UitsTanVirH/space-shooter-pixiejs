@@ -78,17 +78,7 @@ const keys = {};
 
 window.addEventListener("keydown", (e) => {
 	keys[e.code] = true;
-});
 
-window.addEventListener("keyup", (e) => {
-	keys[e.code] = false;
-});
-
-const bullets = []; // to track all active bullets
-let fireCooldown = 0;
-
-// Shoot when spacebar is pressed
-window.addEventListener("keydown", (e) => {
 	if (e.code === "Space" && fireCooldown <= 0) {
 		// Create a bullet
 		const bullet = new PIXI.Graphics();
@@ -104,6 +94,13 @@ window.addEventListener("keydown", (e) => {
 		fireCooldown = 10; // a cooldown to prevent spamming
 	}
 });
+
+window.addEventListener("keyup", (e) => {
+	keys[e.code] = false;
+});
+
+const bullets = []; // to track all active bullets
+let fireCooldown = 0;
 
 let enemyHP = 1;
 let enemySpeed = 1;
