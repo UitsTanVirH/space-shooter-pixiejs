@@ -108,10 +108,15 @@ let lives = 100;
 const enemyStartX = Math.random() * (app.screen.width - 100) + 50;
 
 function spawnEnemy() {
-	enemy.destroyed;
-	enemy.x = Math.random() * (app.screen.width - 100) + 50; // random x between 50 and width-50
-	enemy.y = Math.random();
-	enemy.tint = 0xff0000;
+	if (enemy) enemy.destroy();
+	const newEnemy = new PIXI.Graphics();
+	newEnemy.circle(0, 0, 20).fill(0xff0000);
+	newEnemy.x = Math.random() * (app.screen.width - 100) + 50; // random x between 50 and width-50
+
+	newEnemy.y = Math.random() + 50;
+	app.stage.addChild(newEnemy);
+	// reassign the enemy variable
+	enemy = newEnemy;
 	enemyHP = 1;
 	console.log("New enemy spawned at x:", enemy.x);
 	console.log("New enemy spawned at y:", enemy.y);
@@ -126,7 +131,6 @@ app.ticker.add((ticker) => {
 	// only move enemy if it's alive
 	if (!enemy.destroyed) {
 		enemy.y += enemySpeed * ticker.deltaTime;
-		// enemy.x = enemyStartX;
 
 		// if enemy reached bottom then respawn
 		if (enemy.y > app.screen.height) {
@@ -191,23 +195,8 @@ app.ticker.add((ticker) => {
 
 					// Spawn new one after 1 second
 					setTimeout(() => {
-						const newEnemy = new PIXI.Graphics();
-						newEnemy.circle(0, 0, 20).fill(0xff0000);
-						newEnemy.x =
-							Math.random() * (app.screen.width - 100) + 50; // random x between 50 and width-50
-
-						newEnemy.y = Math.random() + 50;
-						app.stage.addChild(newEnemy);
-						// reassign the enemy variable
-						enemy = newEnemy;
-						enemyHP = 1;
+						spawnEnemy();
 					}, 1000);
-				} else {
-					// Flash white on hit
-					enemy.tint = 0xffffff;
-					setTimeout(() => {
-						if (!enemy.destroyed) enemy.tint = 0xff0000;
-					}, 100);
 				}
 				continue;
 			}
