@@ -1,20 +1,18 @@
 import * as PIXI from "pixi.js";
 
-// Create the app
 const app = new PIXI.Application();
 
-// Initialize it (async — we need to await it)
 await app.init({
 	width: 1900,
 	height: 920,
-	background: 0x0a0a1a, // dark navy — our space background
+	background: 0x0a0a1a, // dark navy
 });
 
-// Stick the canvas into the webpage
+// stick the canvas into the webpage
 document.body.appendChild(app.canvas);
 
-// Draw a white circle (our "player" for now)
-const player = new PIXI.Graphics();
+// player and enemy graphics
+let player = new PIXI.Graphics();
 player.circle(0, 0, 25).fill(0x00ccff);
 
 let enemy = new PIXI.Graphics();
@@ -26,11 +24,56 @@ player.y = app.screen.height - 200;
 enemy.x = app.screen.width / 2;
 enemy.y = 100;
 
-// Add it to the stage so it gets rendered
+// score tracking
 app.stage.addChild(player);
 app.stage.addChild(enemy);
 
-// Track which keys are currently held down
+let score = 0;
+
+const scoreText = new PIXI.Text({
+	text: "Score: 0",
+	style: {
+		fontFamily: "Arial",
+		fontSize: 28,
+		fill: 0xffffff,
+		fontWeight: "bold",
+	},
+});
+
+scoreText.x = 20;
+scoreText.y = 20;
+app.stage.addChild(scoreText);
+
+const livesText = new PIXI.Text({
+	text: "Lives: 100",
+	style: {
+		fontFamily: "Arial",
+		fontSize: 28,
+		fill: 0xffffff,
+		fontWeight: "bold",
+	},
+});
+
+livesText.x = 20;
+livesText.y = 60;
+app.stage.addChild(livesText);
+
+const gameOver = new PIXI.Text({
+	text: "Game Over!",
+	style: {
+		fontFamily: "Arial",
+		fontSize: 40,
+		fill: 0xffffff,
+		fontWeight: "bold",
+	},
+});
+
+gameOver.x = app.screen.width / 2 - gameOver.width / 2;
+gameOver.y = app.screen.height / 2 - gameOver.height / 2;
+app.stage.addChild(gameOver);
+gameOver.visible = false;
+
+// track which keys are currently held down
 const keys = {};
 
 window.addEventListener("keydown", (e) => {
@@ -41,8 +84,8 @@ window.addEventListener("keyup", (e) => {
 	keys[e.code] = false;
 });
 
-const bullets = []; // array to track all active bullets
-let fireCooldown = 0; // frames untill we can fire again
+const bullets = []; // to track all active bullets
+let fireCooldown = 0;
 
 // Shoot when spacebar is pressed
 window.addEventListener("keydown", (e) => {
@@ -56,44 +99,53 @@ window.addEventListener("keydown", (e) => {
 		bullet.y = player.y;
 
 		app.stage.addChild(bullet);
-		bullets.push(bullet); // track it
+		bullets.push(bullet);
 
-		fireCooldown = 10; // add a cooldown to prevent spamming
+		fireCooldown = 10; // a cooldown to prevent spamming
 	}
 });
 
-let enemyHP = 3;
-const enemyStartX = app.screen.width / 2;
+let enemyHP = 1;
+let enemySpeed = 1;
+let lives = 100;
+const enemyStartX = Math.random() * (app.screen.width - 100) + 50;
 
 function spawnEnemy() {
-	enemy.destroyed; // if old one gone, we need a fresh one —
-	// actually, let's reset instead of recreating for now:
-	enemy.x = Math.random() * (app.screen.width - 100) + 50;
-	enemy.y = 100;
+	enemy.destroyed;
+	enemy.x = Math.random() * (app.screen.width - 100) + 50; // random x between 50 and width-50
+	enemy.y = Math.random();
 	enemy.tint = 0xff0000;
-	enemyHP = 3;
+	enemyHP = 1;
+	console.log("New enemy spawned at x:", enemy.x);
+	console.log("New enemy spawned at y:", enemy.y);
 }
 
 app.ticker.add((ticker) => {
 	const playerSpeed = 10;
-	const enemySpeed = 2;
 	const dx = playerSpeed * ticker.deltaTime;
 
 	if (fireCooldown > 0) fireCooldown--;
 
-	// Only move enemy if it's alive
+	// only move enemy if it's alive
 	if (!enemy.destroyed) {
 		enemy.y += enemySpeed * ticker.deltaTime;
-		enemy.x = enemyStartX + Math.sin(ticker.lastTime / 500) * 100;
+		// enemy.x = enemyStartX;
 
-		// Enemy reached bottom — respawn
+		// if enemy reached bottom then respawn
 		if (enemy.y > app.screen.height) {
-			spawnEnemy();
+			lives -= 1;
+
+			livesText.text = "Lives: " + lives;
+			console.log("Enemy escaped! Lives remaining:", lives);
+			if (lives === 0) {
+				console.log("Game Over!");
+				gameOver.visible = true;
+				app.ticker.stop();
+			} else {
+				spawnEnemy();
+			}
 		}
 	}
-
-	enemy.y += enemySpeed * ticker.deltaTime; // Move enemy downwards
-	enemy.x = enemyStartX + Math.sin(ticker.lastTime / 500) * 100; // add some horizontal movement
 
 	if (keys["ArrowLeft"]) player.x = Math.max(25, player.x - dx);
 	if (keys["ArrowRight"])
@@ -102,12 +154,12 @@ app.ticker.add((ticker) => {
 	if (keys["ArrowDown"])
 		player.y = Math.min(app.screen.height - 25, player.y + dx);
 
-	// bullets
+	// bullets and enemy interaction
 	for (let i = bullets.length - 1; i >= 0; i--) {
 		const b = bullets[i];
 		b.y -= 20 * ticker.deltaTime;
 
-		// Off screen — remove
+		// Off screen remove
 		if (b.y < 0) {
 			app.stage.removeChild(b);
 			b.destroy();
@@ -115,38 +167,43 @@ app.ticker.add((ticker) => {
 			continue; // skip collision check for this bullet
 		}
 
-		// Collision — only check if enemy is alive
+		// collision check if enemy is alive
 		if (!enemy.destroyed) {
 			const distx = b.x - enemy.x;
 			const disty = b.y - enemy.y;
 			const distance = Math.sqrt(distx * distx + disty * disty);
 
 			if (distance < 25) {
-				// Remove bullet
+				// bullet hit the enemy so remove the bullet and reduce enemy HP
 				app.stage.removeChild(b);
 				b.destroy();
 				bullets.splice(i, 1);
 
-				// Reduce HP
 				enemyHP--;
 				console.log("Hit! HP remaining:", enemyHP);
 
 				if (enemyHP <= 0) {
-					// Enemy dead
 					console.log("Enemy destroyed!");
 					app.stage.removeChild(enemy);
 					enemy.destroy();
+
+					score += 10;
+					scoreText.text = "Score: " + score;
+
+					enemySpeed += 0.2;
+
 					// Spawn new one after 1 second
 					setTimeout(() => {
 						const newEnemy = new PIXI.Graphics();
 						newEnemy.circle(0, 0, 20).fill(0xff0000);
 						newEnemy.x =
-							Math.random() * (app.screen.width - 100) + 50;
-						newEnemy.y = 100;
+							Math.random() * (app.screen.width - 100) + 50; // random x between 50 and width-50
+
+						newEnemy.y = Math.random() + 50;
 						app.stage.addChild(newEnemy);
 						// reassign the enemy variable
 						enemy = newEnemy;
-						enemyHP = 3;
+						enemyHP = 1;
 					}, 1000);
 				} else {
 					// Flash white on hit
