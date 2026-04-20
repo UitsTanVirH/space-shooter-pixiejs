@@ -1,34 +1,23 @@
 import * as PIXI from "pixi.js";
 
 const app = new PIXI.Application();
-
 await app.init({
 	width: 1900,
 	height: 920,
-	background: 0x0a0a1a, // dark navy
+	background: 0x0a0a1a,
 });
-
-// stick the canvas into the webpage
 document.body.appendChild(app.canvas);
 
-// player and enemy graphics
-let player = new PIXI.Graphics();
-player.circle(0, 0, 25).fill(0x00ccff);
+// ── Player ────────────────────────────────────────────────
+const playerGfx = new PIXI.Graphics();
+playerGfx.circle(0, 0, 25).fill(0x00ccff);
+playerGfx.x = app.screen.width / 2;
+playerGfx.y = app.screen.height - 200;
+app.stage.addChild(playerGfx);
 
-let enemy = new PIXI.Graphics();
-enemy.circle(0, 0, 20).fill(0xff0000);
-
-player.x = app.screen.width / 2;
-player.y = app.screen.height - 200;
-
-enemy.x = app.screen.width / 2;
-enemy.y = 100;
-
-// score tracking
-app.stage.addChild(player);
-app.stage.addChild(enemy);
-
+// ── UI Text ───────────────────────────────────────────────
 let score = 0;
+let lives = 3;
 
 const scoreText = new PIXI.Text({
 	text: "Score: 0",
@@ -39,13 +28,8 @@ const scoreText = new PIXI.Text({
 		fontWeight: "bold",
 	},
 });
-
-scoreText.x = 20;
-scoreText.y = 20;
-app.stage.addChild(scoreText);
-
 const livesText = new PIXI.Text({
-	text: "Lives: 100",
+	text: "Lives: 3",
 	style: {
 		fontFamily: "Arial",
 		fontSize: 28,
@@ -53,153 +37,197 @@ const livesText = new PIXI.Text({
 		fontWeight: "bold",
 	},
 });
-
-livesText.x = 20;
-livesText.y = 60;
-app.stage.addChild(livesText);
-
-const gameOver = new PIXI.Text({
+const gameOverText = new PIXI.Text({
 	text: "Game Over!",
 	style: {
 		fontFamily: "Arial",
-		fontSize: 40,
-		fill: 0xffffff,
+		fontSize: 60,
+		fill: 0xff4444,
 		fontWeight: "bold",
 	},
 });
 
-gameOver.x = app.screen.width / 2 - gameOver.width / 2;
-gameOver.y = app.screen.height / 2 - gameOver.height / 2;
-app.stage.addChild(gameOver);
-gameOver.visible = false;
+scoreText.x = 20;
+scoreText.y = 20;
+livesText.x = 20;
+livesText.y = 60;
+gameOverText.x = app.screen.width / 2 - gameOverText.width / 2;
+gameOverText.y = app.screen.height / 2 - gameOverText.height / 2;
+gameOverText.visible = false;
 
-// track which keys are currently held down
-const keys = {};
+app.stage.addChild(scoreText);
+app.stage.addChild(livesText);
+app.stage.addChild(gameOverText);
 
-window.addEventListener("keydown", (e) => {
-	keys[e.code] = true;
+// ── Enemies ───────────────────────────────────────────────
+const enemies = []; // array of { gfx, hp, vx, wobble }
+const ENEMY_RADIUS = 20;
+const ENEMY_BASE_SPEED = 1.5;
+const STEP_DOWN = 60; // how many px down each time they bounce a wall
+let enemySpeed = ENEMY_BASE_SPEED;
 
-	if (e.code === "Space" && fireCooldown <= 0) {
-		// Create a bullet
-		const bullet = new PIXI.Graphics();
-		bullet.rect(-3, -10, 6, 20).fill(0xffff00); // thin yellow rectangle
+function createEnemy() {
+	const gfx = new PIXI.Graphics();
+	gfx.circle(0, 0, ENEMY_RADIUS).fill(0xff0000);
 
-		// Start at the player's position
-		bullet.x = player.x;
-		bullet.y = player.y;
+	gfx.x = -ENEMY_RADIUS; // start just off screen
+	gfx.y = 80;
 
-		app.stage.addChild(bullet);
-		bullets.push(bullet);
+	app.stage.addChild(gfx);
 
-		fireCooldown = 10; // a cooldown to prevent spamming
-	}
-});
-
-window.addEventListener("keyup", (e) => {
-	keys[e.code] = false;
-});
-
-const bullets = []; // to track all active bullets
-let fireCooldown = 0;
-
-let enemyHP = 1;
-let enemySpeed = 1;
-let lives = 100;
-const enemyStartX = Math.random() * (app.screen.width - 100) + 50;
-
-function spawnEnemy() {
-	if (enemy) enemy.destroy();
-	const newEnemy = new PIXI.Graphics();
-	newEnemy.circle(0, 0, 20).fill(0xff0000);
-	newEnemy.x = Math.random() * (app.screen.width - 100) + 50; // random x between 50 and width-50
-
-	newEnemy.y = Math.random() + 50;
-	app.stage.addChild(newEnemy);
-	// reassign the enemy variable
-	enemy = newEnemy;
-	enemyHP = 1;
-	console.log("New enemy spawned at x:", enemy.x);
-	console.log("New enemy spawned at y:", enemy.y);
+	enemies.push({
+		gfx,
+		hp: 3,
+		vx: enemySpeed, // start moving right
+		wobble: Math.random() * Math.PI * 2, // random phase offset — key for async wobble
+	});
 }
 
-app.ticker.add((ticker) => {
-	const playerSpeed = 10;
-	const dx = playerSpeed * ticker.deltaTime;
+// Spawn enemies one by one with a delay
+for (let i = 0; i < 100; i++) {
+	setTimeout(() => createEnemy(), i * 300);
+}
 
+// ── Bullets ───────────────────────────────────────────────
+const bullets = [];
+let fireCooldown = 0;
+
+// ── Mouse ─────────────────────────────────────────────────
+let mouseX = playerGfx.x;
+let mouseY = playerGfx.y;
+let shooting = false;
+
+window.addEventListener("mousemove", (e) => {
+	mouseX = e.clientX;
+	mouseY = e.clientY;
+});
+window.addEventListener("mousedown", (e) => {
+	if (e.button === 0) shooting = true;
+});
+window.addEventListener("mouseup", (e) => {
+	if (e.button === 0) shooting = false;
+});
+window.addEventListener("contextmenu", (e) => e.preventDefault());
+
+// ── Game loop ─────────────────────────────────────────────
+let gameRunning = true;
+
+app.ticker.add((ticker) => {
 	if (fireCooldown > 0) fireCooldown--;
 
-	// only move enemy if it's alive
-	if (!enemy.destroyed) {
-		enemy.y += enemySpeed * ticker.deltaTime;
+	// Player follows mouse with lerp + boundary clamp
+	const cx = Math.max(25, Math.min(app.screen.width - 25, mouseX));
+	const cy = Math.max(700, Math.min(app.screen.height - 25, mouseY));
+	playerGfx.x += (cx - playerGfx.x) * 0.5;
+	playerGfx.y += (cy - playerGfx.y) * 0.5;
 
-		// if enemy reached bottom then respawn
-		if (enemy.y > app.screen.height) {
-			lives -= 1;
+	// Shoot
+	if (shooting && fireCooldown <= 0) {
+		const b = new PIXI.Graphics();
+		b.rect(-3, -10, 6, 20).fill(0xffff00);
+		b.x = playerGfx.x;
+		b.y = playerGfx.y;
+		app.stage.addChild(b);
+		bullets.push(b);
+		fireCooldown = 10;
+	}
 
+	// ── Update enemies ────────────────────────────────────
+	for (let i = enemies.length - 1; i >= 0; i--) {
+		const e = enemies[i];
+		const g = e.gfx;
+
+		// Horizontal movement
+		g.x += e.vx * ticker.deltaTime;
+
+		// Drunk wobble — each enemy has a different wobble offset
+		// so they oscillate independently
+		e.wobble += 0.05;
+		g.y += Math.sin(e.wobble) * 0.3;
+
+		// Bounce off right wall → step down, reverse direction
+		if (g.x > app.screen.width - ENEMY_RADIUS) {
+			g.x = app.screen.width - ENEMY_RADIUS; // clamp so it doesn't escape
+			e.vx = -Math.abs(e.vx); // force left
+			g.y += STEP_DOWN;
+		}
+
+		// Bounce off left wall → step down, reverse direction
+		if (g.x < ENEMY_RADIUS) {
+			g.x = ENEMY_RADIUS; // clamp
+			e.vx = Math.abs(e.vx); // force right
+			g.y += STEP_DOWN;
+		}
+
+		// Enemy reached the bottom → lose a life, remove it
+		if (g.y > app.screen.height) {
+			app.stage.removeChild(g);
+			g.destroy();
+			enemies.splice(i, 1);
+
+			lives--;
 			livesText.text = "Lives: " + lives;
-			console.log("Enemy escaped! Lives remaining:", lives);
-			if (lives === 0) {
-				console.log("Game Over!");
-				gameOver.visible = true;
+
+			if (lives <= 0) {
+				gameOverText.visible = true;
+				gameRunning = false;
 				app.ticker.stop();
-			} else {
-				spawnEnemy();
+				return;
 			}
+			continue;
 		}
 	}
 
-	if (keys["ArrowLeft"]) player.x = Math.max(25, player.x - dx);
-	if (keys["ArrowRight"])
-		player.x = Math.min(app.screen.width - 25, player.x + dx);
-	if (keys["ArrowUp"]) player.y = Math.max(25, player.y - dx);
-	if (keys["ArrowDown"])
-		player.y = Math.min(app.screen.height - 25, player.y + dx);
-
-	// bullets and enemy interaction
+	// ── Update bullets ────────────────────────────────────
 	for (let i = bullets.length - 1; i >= 0; i--) {
 		const b = bullets[i];
 		b.y -= 20 * ticker.deltaTime;
 
-		// Off screen remove
+		// Off screen
 		if (b.y < 0) {
 			app.stage.removeChild(b);
 			b.destroy();
 			bullets.splice(i, 1);
-			continue; // skip collision check for this bullet
+			continue;
 		}
 
-		// collision check if enemy is alive
-		if (!enemy.destroyed) {
-			const distx = b.x - enemy.x;
-			const disty = b.y - enemy.y;
-			const distance = Math.sqrt(distx * distx + disty * disty);
+		// Check against every enemy
+		let bulletConsumed = false;
+		for (let j = enemies.length - 1; j >= 0; j--) {
+			const e = enemies[j];
+			const dx = b.x - e.gfx.x;
+			const dy = b.y - e.gfx.y;
 
-			if (distance < 25) {
-				// bullet hit the enemy so remove the bullet and reduce enemy HP
-				app.stage.removeChild(b);
-				b.destroy();
-				bullets.splice(i, 1);
+			if (Math.sqrt(dx * dx + dy * dy) < ENEMY_RADIUS + 5) {
+				// Hit!
+				e.hp--;
 
-				enemyHP--;
-				console.log("Hit! HP remaining:", enemyHP);
-
-				if (enemyHP <= 0) {
-					console.log("Enemy destroyed!");
-					app.stage.removeChild(enemy);
-					enemy.destroy();
+				if (e.hp <= 0) {
+					// Enemy dead
+					app.stage.removeChild(e.gfx);
+					e.gfx.destroy();
+					enemies.splice(j, 1);
 
 					score += 10;
 					scoreText.text = "Score: " + score;
-
-					enemySpeed += 0.2;
-
-					// Spawn new one after 1 second
+					enemySpeed += 0.05; // tiny speed bump per kill
+				} else {
+					// Flash white
+					e.gfx.tint = 0xffffff;
 					setTimeout(() => {
-						spawnEnemy();
-					}, 1000);
+						if (!e.gfx.destroyed) e.gfx.tint = 0xff0000;
+					}, 80);
 				}
-				continue;
+
+				bulletConsumed = true;
+				break; // one bullet hits one enemy — stop checking
 			}
+		}
+
+		if (bulletConsumed) {
+			app.stage.removeChild(b);
+			b.destroy();
+			bullets.splice(i, 1);
 		}
 	}
 });
