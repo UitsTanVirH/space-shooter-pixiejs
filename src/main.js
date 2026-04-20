@@ -117,7 +117,7 @@ app.ticker.add((ticker) => {
 
 	// Player follows mouse with lerp + boundary clamp
 	const cx = Math.max(25, Math.min(app.screen.width - 25, mouseX));
-	const cy = Math.max(700, Math.min(app.screen.height - 25, mouseY));
+	const cy = Math.max(620, Math.min(app.screen.height - 25, mouseY));
 	playerGfx.x += (cx - playerGfx.x) * 0.5;
 	playerGfx.y += (cy - playerGfx.y) * 0.5;
 
